@@ -187,8 +187,8 @@ class Manager {
 		}
 
 		$entityMap->setClass($entity);
-        
-        	$entityMap->setManager($this);
+
+		$entityMap->setManager($this);
 		
 		$this->entityClasses[$entity] = $entityMap;
 	}
