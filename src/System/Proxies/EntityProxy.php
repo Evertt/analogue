@@ -80,4 +80,14 @@ class EntityProxy extends Proxy
 
         return call_user_func_array([$this->loadedCollection, $method], $parameters);
     }
+
+    /**
+     * Convert to string when it's implemented
+     *
+     * @return string
+     */
+    public function __toString()
+    {
+        return (string) $this->getUnderlyingObject();
+    }
 }
