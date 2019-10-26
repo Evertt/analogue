@@ -1044,7 +1044,7 @@ class EntityMap
      */
     public function boot()
     {
-        if (count($this->relationships > 0)) {
+        if (count($this->relationships) > 0) {
             $this->sortRelationshipsByType();
         }
     }
