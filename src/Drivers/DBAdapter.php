@@ -1,22 +1,22 @@
-<?php namespace Analogue\ORM\Drivers;
+<?php
+
+namespace Analogue\ORM\Drivers;
 
 interface DBAdapter
 {
-
     /**
-     * Return's Driver specific Query Implementation
+     * Return's Driver specific Query Implementation.
      *
-     * @return \Analogue\ORM\Drivers\QueryAdapter
+     * @return \Illuminate\Database\Query\Builder
      */
     public function getQuery();
-    
 
     /**
-     * Return the Date format used on this adapter
+     * Return the Date format used on this adapter.
      *
      * @return string
      */
-    public function getDateFormat();
+    public function getDateFormat(): string;
 
     /**
      * Start a DB transaction on driver that supports it.
@@ -38,4 +38,14 @@ interface DBAdapter
      * @return void
      */
     public function rollback();
+
+    /**
+     * Parse result from database and return an array of results
+     * casted to analogue compatible values.
+     *
+     * @param array $rows
+     *
+     * @return array
+     */
+    public function fromDatabase(array $rows): array;
 }

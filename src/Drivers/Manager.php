@@ -1,14 +1,22 @@
-<?php namespace Analogue\ORM\Drivers;
+<?php
+
+namespace Analogue\ORM\Drivers;
 
 class Manager
 {
-
+    /**
+     * Drivers.
+     *
+     * @var DriverInterface[]
+     */
     protected $drivers = [];
 
     /**
-     * Add a Mapping Driver
+     * Add a Mapping Driver.
      *
-     * @param \Analogue\ORM\Drivers\DriverInterface $driver
+     * @param DriverInterface $driver
+     *
+     * @return void
      */
     public function addDriver(DriverInterface $driver)
     {
@@ -16,13 +24,14 @@ class Manager
     }
 
     /**
-     * Get the DBAdapter
+     * Get the DBAdapter.
      *
-     * @param  string   $driver
-     * @param  string   $connection  connection name for drivers suporting multiple connection.
-     * @return DriverInterface
+     * @param string $driver
+     * @param string $connection connection name for drivers supporting multiple connection.
+     *
+     * @return DBAdapter
      */
-    public function getAdapter($driver, $connection = null)
+    public function getAdapter(string $driver, string $connection = null)
     {
         if (array_key_exists($driver, $this->drivers)) {
             return $this->drivers[$driver]->getAdapter($connection);

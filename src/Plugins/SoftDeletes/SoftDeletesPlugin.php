@@ -2,11 +2,11 @@
 
 namespace Analogue\ORM\Plugins\SoftDeletes;
 
-use Carbon\Carbon;
-use Analogue\ORM\System\Manager;
-use Analogue\ORM\System\Mapper;
 use Analogue\ORM\Plugins\AnaloguePlugin;
+use Analogue\ORM\System\InternallyMappable;
+use Analogue\ORM\System\Mapper;
 use Analogue\ORM\System\Wrappers\Factory;
+use Carbon\Carbon;
 
 /**
  * This Plugin enables a softDeletes behaviour equivalent
@@ -14,24 +14,31 @@ use Analogue\ORM\System\Wrappers\Factory;
  */
 class SoftDeletesPlugin extends AnaloguePlugin
 {
-
     /**
-     * Register the plugin
-     *
-     * @return void
+     * {@inheritdoc}
      */
     public function register()
     {
-        $host = $this;
-
         // Hook any mapper init and check the mapping include soft deletes.
-        $this->manager->registerGlobalEvent('initialized', function ($mapper) use ($host) {
+        $this->manager->registerGlobalEvent('initialized', function ($event, $payload = null) {
+
+            // Cross Compatible Event handling with 5.3
+            // TODO : find a replacement event handler
+            if (is_null($payload)) {
+                $mapper = $event;
+            } else {
+                $mapper = $payload[0]->mapper;
+            }
+
             $entityMap = $mapper->getEntityMap();
 
             if ($entityMap->usesSoftDeletes()) {
-                $host->registerSoftDelete($mapper);
-            }
+                $this->registerSoftDelete($mapper);
 
+                foreach ($this->getCustomEvents() as $name => $class) {
+                    $mapper->addCustomEvent($name, $class);
+                }
+            }
         });
     }
 
@@ -39,54 +46,71 @@ class SoftDeletesPlugin extends AnaloguePlugin
      * By hooking to the mapper initialization event, we can extend it
      * with the softDelete capacity.
      *
-     * @param  \Analogue\ORM\System\Mapper  $mapper
-     * @return void
+     * @param \Analogue\ORM\System\Mapper $mapper
+     *
+     * @throws \Analogue\ORM\Exceptions\MappingException
+     *
+     * @return bool|void
      */
     protected function registerSoftDelete(Mapper $mapper)
     {
         $entityMap = $mapper->getEntityMap();
 
         // Add Scopes
-        $mapper->addGlobalScope(new SoftDeletingScope);
-
-        $host = $this;
+        $mapper->addGlobalScope(new SoftDeletingScope());
 
         // Register 'deleting' events
-        $mapper->registerEvent('deleting', function ($entity) use ($entityMap,$host) {
-            
-            // Convert Entity into an EntityWrapper
-            $factory = new Factory;
-
-            $wrappedEntity = $factory->make($entity);
+        $mapper->registerEvent('deleting', function ($event) use ($entityMap) {
+            $entity = $event->entity;
+            $wrappedEntity = $this->getMappable($entity);
 
             $deletedAtField = $entityMap->getQualifiedDeletedAtColumn();
 
-            if (! is_null($wrappedEntity->getEntityAttribute($deletedAtField))) {
+            if (!is_null($wrappedEntity->getEntityAttribute($deletedAtField))) {
                 return true;
-            } else {
-                $time= new Carbon;
-
-                $wrappedEntity->setEntityAttribute($deletedAtField, $time);
-
-                $plainObject = $wrappedEntity->getObject();
-                $host->manager->mapper(get_class($plainObject))->store($plainObject);
-
-                return false;
             }
 
+            $time = new Carbon();
+
+            $wrappedEntity->setEntityAttribute($deletedAtField, $time);
+
+            $plainObject = $wrappedEntity->getObject();
+            $this->manager->mapper(get_class($plainObject))->store($plainObject);
+
+            return false;
         });
 
         // Register RestoreCommand
-        $mapper->addCustomCommand('Analogue\ORM\Plugins\SoftDeletes\Restore');
+        $mapper->addCustomCommand(Restore::class);
     }
 
     /**
-     * Get custom events provided by the plugin
+     * Return internally mappable if not mappable.
      *
-     * @return array
+     * @param mixed $entity
+     *
+     * @return InternallyMappable
      */
-    public function getCustomEvents()
+    protected function getMappable($entity) : InternallyMappable
     {
-        return ['restoring', 'restored'];
+        if ($entity instanceof InternallyMappable) {
+            return $entity;
+        }
+
+        $factory = new Factory();
+        $wrappedEntity = $factory->make($entity);
+
+        return $wrappedEntity;
+    }
+
+    /**
+     * {@inheritdoc}
+     */
+    public function getCustomEvents():  array
+    {
+        return [
+            'restoring' => Events\Restoring::class,
+            'restored'  => Events\Restored::class,
+        ];
     }
 }

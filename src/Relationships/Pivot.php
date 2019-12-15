@@ -1,14 +1,18 @@
-<?php namespace Analogue\ORM\Relationships;
+<?php
+
+namespace Analogue\ORM\Relationships;
 
 use Analogue\ORM\Entity;
 
 class Pivot extends Entity
 {
-
+    /**
+     * @var bool
+     */
     protected $exists;
 
     /**
-     * Pivot's table
+     * Pivot's table.
      *
      * @var string
      */
@@ -55,30 +59,30 @@ class Pivot extends Entity
      *
      * @var array
      */
-    protected $guarded = array();
+    protected $guarded = [];
 
     /**
      * Pivot uses timestamps ?
      *
-     * @var boolean
+     * @var bool
      */
     protected $timestamps;
 
     /**
      * Create a new pivot model instance.
      *
-     * @param  $parent
-     * @param  array   $attributes
-     * @param  string  $table
-     * @param  bool    $exists
-     * @return void
+     * @param \Analogue\ORM\System\InternallyMappable $parent
+     * @param \Analogue\ORM\EntityMap                 $parentMap
+     * @param array                                   $attributes
+     * @param string                                  $table
+     * @param bool                                    $exists
      */
     public function __construct($parent, $parentMap, $attributes, $table, $exists = false)
     {
         // The pivot model is a "dynamic" model since we will set the tables dynamically
         // for the instance. This allows it work for any intermediate tables for the
         // many to many relationship that are defined by this developer's classes.
-        $this->setEntityAttributes($attributes, true);
+        $this->setEntityAttributes($attributes);
 
         $this->table = $table;
 
@@ -117,8 +121,9 @@ class Pivot extends Entity
     /**
      * Set the key names for the pivot model instance.
      *
-     * @param  string  $foreignKey
-     * @param  string  $otherKey
+     * @param string $foreignKey
+     * @param string $otherKey
+     *
      * @return $this
      */
     public function setPivotKeys($foreignKey, $otherKey)

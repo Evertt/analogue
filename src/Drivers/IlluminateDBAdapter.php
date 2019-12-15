@@ -1,26 +1,34 @@
-<?php namespace Analogue\ORM\Drivers;
+<?php
+
+namespace Analogue\ORM\Drivers;
 
 use Illuminate\Database\Connection;
-use Illuminate\Database\Query\Builder as QueryBuilder;
 
 /**
  * Illuminate Driver for Analogue ORM. If multiple DB connections are
- * involved, we'll treat each underlyin driver as a separate instance.
+ * involved, we'll treat each underlying driver as a separate instance.
  */
 class IlluminateDBAdapter implements DBAdapter
 {
-
+    /**
+     * Database connection.
+     *
+     * @var Connection
+     */
     protected $connection;
 
+    /**
+     * IlluminateDBAdapter constructor.
+     *
+     * @param Connection $connection
+     */
     public function __construct(Connection $connection)
     {
         $this->connection = $connection;
     }
 
     /**
-     * Return a new Query instance for this driver
-     *
-     * @return QueryAdapter
+     * {@inheritdoc}
      */
     public function getQuery()
     {
@@ -28,24 +36,19 @@ class IlluminateDBAdapter implements DBAdapter
 
         $grammar = $connection->getQueryGrammar();
 
-        $queryBuilder = new QueryBuilder($connection, $grammar, $connection->getPostProcessor());
-
-        return new IlluminateQueryAdapter($queryBuilder);
+        return new IlluminateQueryBuilder($connection, $grammar, $connection->getPostProcessor());
     }
 
     /**
-     * Get the date format supported by the current connection
-     *
-     * @return string
+     * {@inheritdoc}
      */
-    public function getDateFormat()
+    public function getDateFormat(): string
     {
         return $this->connection->getQueryGrammar()->getDateFormat();
     }
 
     /**
-     * Start a DB transaction on driver that supports it.
-     * @return void
+     * {@inheritdoc}
      */
     public function beginTransaction()
     {
@@ -53,8 +56,7 @@ class IlluminateDBAdapter implements DBAdapter
     }
 
     /**
-     * Commit a DB transaction on driver that supports it.
-     * @return void
+     * {@inheritdoc}
      */
     public function commit()
     {
@@ -62,11 +64,18 @@ class IlluminateDBAdapter implements DBAdapter
     }
 
     /**
-     * Rollback a DB transaction
-     * @return void
+     * {@inheritdoc}
      */
     public function rollback()
     {
-        $this->connection->rollback();
+        $this->connection->rollBack();
+    }
+
+    /**
+     * {@inheritdoc}
+     */
+    public function fromDatabase(array $rows): array
+    {
+        return $rows;
     }
 }

@@ -1,12 +1,13 @@
-<?php namespace Analogue\ORM\Relationships;
+<?php
 
-use Analogue\ORM\EntityCollection;
+namespace Analogue\ORM\Relationships;
 
 class MorphMany extends MorphOneOrMany
 {
-
     /**
      * Get the results of the relationship.
+     *
+     * @param  $relation
      *
      * @return mixed
      */
@@ -20,33 +21,15 @@ class MorphMany extends MorphOneOrMany
     }
 
     /**
-     * Initialize the relation on a set of models.
-     *
-     * @param  array   $entities
-     * @param  string  $relation
-     * @return array
-     */
-    public function initRelation(array $entities, $relation)
-    {
-        foreach ($entities as $entity) {
-            $entity = $this->factory->make($entity);
-
-            $entity->setEntityAttribute($relation, $this->relatedMap->newCollection());
-        }
-
-        return $entities;
-    }
-
-    /**
      * Match the eagerly loaded results to their parents.
      *
-     * @param  array   $entities
-     * @param  \Analogue\ORM\EntityCollection  $results
-     * @param  string  $relation
+     * @param array  $results
+     * @param string $relation
+     *
      * @return array
      */
-    public function match(array $entities, EntityCollection $results, $relation)
+    public function match(array $results, $relation)
     {
-        return $this->matchMany($entities, $results, $relation);
+        return $this->matchMany($results, $relation);
     }
 }

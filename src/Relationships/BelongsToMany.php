@@ -2,20 +2,17 @@
 
 namespace Analogue\ORM\Relationships;
 
-use Analogue\ORM\System\Query;
-use Analogue\ORM\System\Mapper;
 use Analogue\ORM\EntityCollection;
-use Illuminate\Database\Query\Expression;
-use Analogue\ORM\System\InternallyMappable;
 use Analogue\ORM\Exceptions\EntityNotFoundException;
+use Analogue\ORM\Mappable;
+use Analogue\ORM\System\InternallyMappable;
+use Analogue\ORM\System\Mapper;
+use Analogue\ORM\System\Query;
+use Illuminate\Database\Query\Expression;
+use Illuminate\Support\Collection;
 
-/**
- * @method where
- * @method take
- */
 class BelongsToMany extends Relationship
 {
-
     /**
      * The intermediate table for the relation.
      *
@@ -42,54 +39,45 @@ class BelongsToMany extends Relationship
      *
      * @var string
      */
-    protected $relationName;
+    protected $relation;
 
     /**
      * The pivot table columns to retrieve.
      *
      * @var array
      */
-    protected $pivotColumns = array();
+    protected $pivotColumns = [];
 
     /**
-     * This relationship has pivot attributes
+     * This relationship has pivot attributes.
      *
-     * @var boolean
+     * @var bool
      */
     protected static $hasPivot = true;
 
     /**
      * Create a new has many relationship instance.
      *
-     * @param  Mapper  $mapper
-     * @param  Mappable  $parent
-     * @param  string  $table
-     * @param  string  $foreignKey
-     * @param  string  $otherKey
-     * @param  string  $relationName
+     * @param Mapper   $mapper
+     * @param Mappable $parent
+     * @param string   $table
+     * @param string   $foreignKey
+     * @param string   $otherKey
+     * @param string   $relation
      */
-    public function __construct(Mapper $mapper, $parent, $table, $foreignKey, $otherKey, $relationName = null)
+    public function __construct(Mapper $mapper, $parent, $table, $foreignKey, $otherKey, $relation)
     {
         $this->table = $table;
         $this->otherKey = $otherKey;
         $this->foreignKey = $foreignKey;
-        $this->relationName = $relationName;
+        $this->relation = $relation;
 
         parent::__construct($mapper, $parent);
     }
 
-
-    public function attachTo($related)
-    {
-    }
-
-    public function detachFrom($related)
-    {
-        $ids = $this->getIdsFromHashes([$related]);
-
-        $this->detach($ids);
-    }
-
+    /**
+     * @param $related
+     */
     public function detachMany($related)
     {
         $ids = $this->getIdsFromHashes($related);
@@ -97,6 +85,11 @@ class BelongsToMany extends Relationship
         $this->detach($ids);
     }
 
+    /**
+     * @param array $hashes
+     *
+     * @return array
+     */
     protected function getIdsFromHashes(array $hashes)
     {
         $ids = [];
@@ -105,13 +98,16 @@ class BelongsToMany extends Relationship
             $split = explode('.', $hash);
             $ids[] = $split[1];
         }
+
         return $ids;
     }
 
     /**
      * Get the results of the relationship.
      *
-     * @return mixed
+     * @param $relation
+     *
+     * @return EntityCollection
      */
     public function getResults($relation)
     {
@@ -125,11 +121,12 @@ class BelongsToMany extends Relationship
     /**
      * Set a where clause for a pivot table column.
      *
-     * @param  string  $column
-     * @param  string  $operator
-     * @param  mixed   $value
-     * @param  string  $boolean
-     * @return \Analogue\ORM\Relationships\BelongsToMany
+     * @param string $column
+     * @param string $operator
+     * @param mixed  $value
+     * @param string $boolean
+     *
+     * @return self
      */
     public function wherePivot($column, $operator = null, $value = null, $boolean = 'and')
     {
@@ -139,10 +136,11 @@ class BelongsToMany extends Relationship
     /**
      * Set an or where clause for a pivot table column.
      *
-     * @param  string  $column
-     * @param  string  $operator
-     * @param  mixed   $value
-     * @return \Analogue\ORM\Relationships\BelongsToMany
+     * @param string $column
+     * @param string $operator
+     * @param mixed  $value
+     *
+     * @return self
      */
     public function orWherePivot($column, $operator = null, $value = null)
     {
@@ -150,7 +148,7 @@ class BelongsToMany extends Relationship
     }
 
     /**
-     * Return Pivot attributes when available on a relationship
+     * Return Pivot attributes when available on a relationship.
      *
      * @return array
      */
@@ -162,10 +160,11 @@ class BelongsToMany extends Relationship
     /**
      * Execute the query and get the first result.
      *
-     * @param  array   $columns
+     * @param array $columns
+     *
      * @return mixed
      */
-    public function first($columns = array('*'))
+    public function first($columns = ['*'])
     {
         $results = $this->take(1)->get($columns);
 
@@ -175,45 +174,40 @@ class BelongsToMany extends Relationship
     /**
      * Execute the query and get the first result or throw an exception.
      *
-     * @param  array  $columns
-     * @return Mappable|static
+     * @param array $columns
      *
-     * @throws Mappable|EntityNotFoundException
+     * @throws EntityNotFoundException
+     *
+     * @return Mappable|self
      */
-    public function firstOrFail($columns = array('*'))
+    public function firstOrFail($columns = ['*'])
     {
-        if (! is_null($entity = $this->first($columns))) {
+        if (!is_null($entity = $this->first($columns))) {
             return $entity;
         }
 
-        throw new EntityNotFoundException;
+        throw new EntityNotFoundException();
     }
 
     /**
      * Execute the query as a "select" statement.
      *
-     * @param  array  $columns
-     * @return \Analogue\ORM\EntityCollection
+     * @param array $columns
+     *
+     * @return \Illuminate\Support\Collection
      */
-    public function get($columns = array('*'))
+    public function get($columns = ['*']) : Collection
     {
         // First we'll add the proper select columns onto the query so it is run with
         // the proper columns. Then, we will get the results and hydrate out pivot
         // models with the result of those columns as a separate model relation.
-        $columns = $this->query->getQuery()->columns ? array() : $columns;
+        $columns = $this->query->getQuery()->columns ? [] : $columns;
 
         $select = $this->getSelectColumns($columns);
 
-        $entities = $this->query->addSelect($select)->getEntities();
+        $entities = $this->query->addSelect($select)->disableCache()->get()->all();
 
-        $this->hydratePivotRelation($entities);
-
-        // If we actually found models we will also eager load any relationships that
-        // have been specified as needing to be eager loaded. This will solve the
-        // n + 1 query problem for the developer and also increase performance.
-        if (count($entities) > 0) {
-            $entities = $this->query->eagerLoadRelations($entities);
-        }
+        $entities = $this->hydratePivotRelation($entities);
 
         return $this->relatedMap->newCollection($entities);
     }
@@ -221,33 +215,37 @@ class BelongsToMany extends Relationship
     /**
      * Hydrate the pivot table relationship on the models.
      *
-     * @param  array  $entities
-     * @return void
+     * @param array $entities
+     *
+     * @return array
      */
     protected function hydratePivotRelation(array $entities)
     {
-        // To hydrate the pivot relationship, we will just gather the pivot attributes
-        // and create a new Pivot model, which is basically a dynamic model that we
-        // will set the attributes, table, and connections on so it they be used.
-        
-        foreach ($entities as $entity) {
+        // TODO (note) We should definitely get rid of the pivot in a next
+        // release, as this is not quite relevant in a datamapper context.
+        return array_map(function ($entity) {
             $entityWrapper = $this->factory->make($entity);
 
-            $pivot = $this->newExistingPivot($this->cleanPivotAttributes($entityWrapper));
-
+            $pivotAttributes = $this->cleanPivotAttributes($entityWrapper);
+            $pivot = $this->newExistingPivot($pivotAttributes);
             $entityWrapper->setEntityAttribute('pivot', $pivot);
-        }
+
+            $object = $entityWrapper->unwrap();
+
+            return $object;
+        }, $entities);
     }
 
     /**
      * Get the pivot attributes from a model.
      *
-     * @param  $entity
+     * @param InternallyMappable $entity
+     *
      * @return array
      */
     protected function cleanPivotAttributes(InternallyMappable $entity)
     {
-        $values = array();
+        $values = [];
 
         $attributes = $entity->getEntityAttributes();
 
@@ -285,9 +283,10 @@ class BelongsToMany extends Relationship
     /**
      * Add the constraints for a relationship count query.
      *
-     * @param  \Analogue\ORM\Query  $query
-     * @param  \Analogue\ORM\Query  $parent
-     * @return \Analogue\ORM\Query
+     * @param Query $query
+     * @param Query $parent
+     *
+     * @return Query
      */
     public function getRelationCountQuery(Query $query, Query $parent)
     {
@@ -303,9 +302,10 @@ class BelongsToMany extends Relationship
     /**
      * Add the constraints for a relationship count query on the same table.
      *
-     * @param  \Analogue\ORM\Query  $query
-     * @param  \Analogue\ORM\Query  $parent
-     * @return \Analogue\ORM\Query
+     * @param Query $query
+     * @param Query $parent
+     *
+     * @return Query
      */
     public function getRelationCountQueryForSelfJoin(Query $query, Query $parent)
     {
@@ -333,13 +333,14 @@ class BelongsToMany extends Relationship
     /**
      * Set the select clause for the relation query.
      *
-     * @param  array  $columns
+     * @param array $columns
+     *
      * @return \Analogue\ORM\Relationships\BelongsToMany
      */
-    protected function getSelectColumns(array $columns = array('*'))
+    protected function getSelectColumns(array $columns = ['*'])
     {
-        if ($columns == array('*')) {
-            $columns = array($this->relatedMap->getTable().'.*');
+        if ($columns == ['*']) {
+            $columns = [$this->relatedMap->getTable().'.*'];
         }
 
         return array_merge($columns, $this->getAliasedPivotColumns());
@@ -352,12 +353,12 @@ class BelongsToMany extends Relationship
      */
     protected function getAliasedPivotColumns()
     {
-        $defaults = array($this->foreignKey, $this->otherKey);
+        $defaults = [$this->foreignKey, $this->otherKey];
 
         // We need to alias all of the pivot columns with the "pivot_" prefix so we
         // can easily extract them out of the models and put them into the pivot
         // relationships when they are retrieved and hydrated into the models.
-        $columns = array();
+        $columns = [];
 
         foreach (array_merge($defaults, $this->pivotColumns) as $column) {
             $columns[] = $this->table.'.'.$column.' as pivot_'.$column;
@@ -370,6 +371,7 @@ class BelongsToMany extends Relationship
      * Set the join clause for the relation query.
      *
      * @param  \Analogue\ORM\Query|null
+     *
      * @return $this
      */
     protected function setJoin($query = null)
@@ -407,70 +409,62 @@ class BelongsToMany extends Relationship
     /**
      * Set the constraints for an eager load of the relation.
      *
-     * @param  array  $entities
+     * @param array $results
+     *
      * @return void
      */
-    public function addEagerConstraints(array $entities)
+    public function addEagerConstraints(array $results)
     {
-        $this->query->whereIn($this->getForeignKey(), $this->getKeys($entities));
+        $this->query->whereIn($this->getForeignKey(), $this->getKeysFromResults($results));
     }
 
     /**
-     * Initialize the relation on a set of eneities.
+     * Match Eagerly loaded relation to result.
      *
-     * @param  array   $entities
-     * @param  string  $relation
+     * @param array  $results
+     * @param string $relation
+     *
      * @return array
      */
-    public function initRelation(array $entities, $relation)
+    public function match(array $results, $relation)
     {
-        foreach ($entities as $entity) {
-            $entity = $this->factory->make($entity);
+        $entities = $this->getEager();
 
-            $entity->setEntityAttribute($relation, $this->relatedMap->newCollection());
-        }
+        // TODO; optimize this operation
+        $dictionary = $this->buildDictionary($entities);
 
-        return $entities;
-    }
-
-    /**
-     * Match the eagerly loaded results to their parents.
-     *
-     * @param  array   $entities
-     * @param  \Analogue\ORM\EntityCollection  $results
-     * @param  string  $relation
-     * @return array
-     */
-    public function match(array $entities, EntityCollection $results, $relation)
-    {
-        $dictionary = $this->buildDictionary($results);
-
-        $keyName = $this->relatedMap->getKeyName();
+        $keyName = $this->parentMap->getKeyName();
 
         $cache = $this->parentMapper->getEntityCache();
+
+        $host = $this;
 
         // Once we have an array dictionary of child objects we can easily match the
         // children back to their parent using the dictionary and the keys on the
         // the parent models. Then we will return the hydrated models back out.
-        foreach ($entities as $entity) {
-            $wrapper = $this->factory->make($entity);
+        return array_map(function ($result) use ($dictionary, $keyName, $cache, $relation, $host) {
+            $key = $result[$keyName];
 
-            if (isset($dictionary[$key = $wrapper->getEntityAttribute($keyName)])) {
-                $collection = $this->relatedMap->newCollection($dictionary[$key]);
+            if (isset($dictionary[$key])) {
+                $collection = $host->relatedMap->newCollection($dictionary[$key]);
 
-                $wrapper->setEntityAttribute($relation, $collection);
+                $result[$relation] = $collection;
 
-                $cache->cacheLoadedRelationResult($entity, $relation, $collection, $this);
+                // TODO Refactor this
+                $cache->cacheLoadedRelationResult($key, $relation, $collection, $this);
+            } else {
+                $result[$relation] = $host->relatedMap->newCollection();
             }
-        }
 
-        return $entities;
+            return $result;
+        }, $results);
     }
 
     /**
      * Build model dictionary keyed by the relation's foreign key.
      *
-     * @param  \Analogue\ORM\EntityCollection  $results
+     * @param EntityCollection $results
+     *
      * @return array
      */
     protected function buildDictionary(EntityCollection $results)
@@ -480,12 +474,14 @@ class BelongsToMany extends Relationship
         // First we will build a dictionary of child models keyed by the foreign key
         // of the relation so that we will easily and quickly match them to their
         // parents without having a possibly slow inner loops for every models.
-        $dictionary = array();
+        $dictionary = [];
 
         foreach ($results as $entity) {
             $wrapper = $this->factory->make($entity);
 
-            $dictionary[$wrapper->getEntityAttribute('pivot')->$foreign][] = $entity;
+            $foreignKey = $wrapper->getEntityAttribute('pivot')->$foreign;
+
+            $dictionary[$foreignKey][] = $entity;
         }
 
         return $dictionary;
@@ -504,9 +500,10 @@ class BelongsToMany extends Relationship
     }
 
     /**
-     * Update Pivot
+     * Update Pivot.
      *
-     * @param  $entity
+     * @param \Analogue\ORM\Entity $entity
+     *
      * @return void
      */
     public function updatePivot($entity)
@@ -514,15 +511,16 @@ class BelongsToMany extends Relationship
         $keyName = $this->relatedMap->getKeyName();
 
         $this->updateExistingPivot(
-                $entity->getEntityAttribute($keyName),
-                $entity->getEntityAttribute('pivot')->getEntityAttributes()
+            $entity->getEntityAttribute($keyName),
+            $entity->getEntityAttribute('pivot')->getEntityAttributes()
         );
     }
 
     /**
-     * Update Multiple pivot
+     * Update Multiple pivot.
      *
      * @param  $relatedEntities
+     *
      * @return void
      */
     public function updatePivots($relatedEntities)
@@ -533,9 +531,10 @@ class BelongsToMany extends Relationship
     }
 
     /**
-     * Create Pivot Records
+     * Create Pivot Records.
      *
-     * @param  $relatedEntities
+     * @param \Analogue\ORM\Entity[] $relatedEntities
+     *
      * @return void
      */
     public function createPivots($relatedEntities)
@@ -547,7 +546,6 @@ class BelongsToMany extends Relationship
 
         foreach ($relatedEntities as $entity) {
             $keys[] = $entity->getEntityAttribute($keyName);
-            //$attributes = $entity->getPivotEntity()->getEntityAttributes();
         }
 
         $records = $this->createAttachRecords($keys, $attributes);
@@ -558,9 +556,12 @@ class BelongsToMany extends Relationship
     /**
      * Update an existing pivot record on the table.
      *
-     * @param  mixed  $id
-     * @param  array  $attributes
-     * @return void
+     * @param mixed $id
+     * @param array $attributes
+     *
+     * @throws \InvalidArgumentException
+     *
+     * @return int
      */
     public function updateExistingPivot($id, array $attributes)
     {
@@ -568,19 +569,18 @@ class BelongsToMany extends Relationship
             $attributes = $this->setTimestampsOnAttach($attributes, true);
         }
 
-        $updated = $this->newPivotStatementForId($id)->update($attributes);
-
-        return $updated;
+        return $this->newPivotStatementForId($id)->update($attributes);
     }
 
     /**
      * Attach a model to the parent.
      *
-     * @param  mixed  $id
-     * @param  array  $attributes
+     * @param mixed $id
+     * @param array $attributes
+     *
      * @return void
      */
-    public function attach($id, array $attributes = array())
+    public function attach($id, array $attributes = [])
     {
         $query = $this->newPivotStatement();
 
@@ -588,10 +588,9 @@ class BelongsToMany extends Relationship
     }
 
     /**
-     * Synchronize Relationship
+     * @param array $entities
      *
-     * @param  mixed $entities
-     * @return [type]             [description]
+     * @throws \InvalidArgumentException
      */
     public function sync(array $entities)
     {
@@ -599,22 +598,23 @@ class BelongsToMany extends Relationship
     }
 
     /**
-     * Detach related entities that are not in $id
+     * Detach related entities that are not in $id.
      *
-     * @param  array $entities
+     * @param array $entities
+     *
+     * @throws \InvalidArgumentException
+     *
      * @return void
      */
-    protected function detachExcept(array $entities = array())
+    protected function detachExcept(array $entities = [])
     {
         $query = $this->newPivotQuery();
 
-        // If id is empty, we'll simply skip that statement.
         if (count($entities) > 0) {
             $keys = $this->getKeys($entities);
 
             $query->whereNotIn($this->otherKey, $keys);
         }
-
         $parentKey = $this->parentMap->getKeyName();
 
         $query->where($this->foreignKey, '=', $this->parent->getEntityAttribute($parentKey));
@@ -622,17 +622,17 @@ class BelongsToMany extends Relationship
         $query->delete();
     }
 
-
     /**
      * Create an array of records to insert into the pivot table.
      *
-     * @param  array  $ids
-     * @param  array  $attributes
+     * @param array $ids
+     * @param array $attributes
+     *
      * @return array
      */
     protected function createAttachRecords($ids, array $attributes)
     {
-        $records = array();
+        $records = [];
 
         $timed = in_array($this->createdAt(), $this->pivotColumns);
 
@@ -642,23 +642,24 @@ class BelongsToMany extends Relationship
         foreach ($ids as $key => $value) {
             $records[] = $this->attacher($key, $value, $attributes, $timed);
         }
-        
+
         return $records;
     }
 
     /**
      * Create a full attachment record payload.
      *
-     * @param  int    $key
-     * @param  mixed  $value
-     * @param  array  $attributes
-     * @param  bool   $timed
+     * @param int   $key
+     * @param mixed $value
+     * @param array $attributes
+     * @param bool  $timed
+     *
      * @return array
      */
     protected function attacher($key, $value, $attributes, $timed)
     {
         list($id, $extra) = $this->getAttachId($key, $value, $attributes);
-        
+
         // To create the attachment records, we will simply spin through the IDs given
         // and create a new record to insert for each ID. Each ID may actually be a
         // key in the array, with extra attributes to be placed in other columns.
@@ -670,25 +671,27 @@ class BelongsToMany extends Relationship
     /**
      * Get the attach record ID and extra attributes.
      *
-     * @param  mixed  $key
-     * @param  mixed  $value
-     * @param  array  $attributes
+     * @param int   $key
+     * @param mixed $value
+     * @param array $attributes
+     *
      * @return array
      */
     protected function getAttachId($key, $value, array $attributes)
     {
         if (is_array($value)) {
-            return array($key, array_merge($value, $attributes));
+            return [$key, array_merge($value, $attributes)];
         }
 
-        return array($value, $attributes);
+        return [$value, $attributes];
     }
 
     /**
      * Create a new pivot attachment record.
      *
-     * @param  int   $id
-     * @param  bool  $timed
+     * @param int  $id
+     * @param bool $timed
+     *
      * @return array
      */
     protected function createAttachRecord($id, $timed)
@@ -714,15 +717,16 @@ class BelongsToMany extends Relationship
     /**
      * Set the creation and update timestamps on an attach record.
      *
-     * @param  array  $record
-     * @param  bool   $exists
+     * @param array $record
+     * @param bool  $exists
+     *
      * @return array
      */
     protected function setTimestampsOnAttach(array $record, $exists = false)
     {
         $fresh = $this->freshTimestamp();
 
-        if (! $exists) {
+        if (!$exists) {
             $record[$this->createdAt()] = $fresh;
         }
 
@@ -731,20 +735,30 @@ class BelongsToMany extends Relationship
         return $record;
     }
 
+    /**
+     * @param EntityCollection $entities
+     *
+     * @return array
+     */
     protected function getModelKeysFromCollection(EntityCollection $entities)
     {
         $keyName = $this->relatedMap->getKeyName();
 
-        return array_map(function ($m) use ($keyName) { return $m->$keyName; }, $entities);
+        return array_map(function ($m) use ($keyName) {
+            return $m->$keyName;
+        }, $entities);
     }
 
     /**
      * Detach models from the relationship.
      *
-     * @param  int|array  $ids
+     * @param int|array $ids
+     *
+     * @throws \InvalidArgumentException
+     *
      * @return int
      */
-    public function detach($ids = array())
+    public function detach($ids = [])
     {
         if ($ids instanceof EntityCollection) {
             $ids = (array) $ids->modelKeys();
@@ -764,13 +778,13 @@ class BelongsToMany extends Relationship
         // Once we have all of the conditions set on the statement, we are ready
         // to run the delete on the pivot table. Then, if the touch parameter
         // is true, we will go ahead and touch all related models to sync.
-        $results = $query->delete();
-
-        return $results;
+        return $query->delete();
     }
-    
+
     /**
      * Create a new query builder for the pivot table.
+     *
+     * @throws \InvalidArgumentException
      *
      * @return \Illuminate\Database\Query\Builder
      */
@@ -796,7 +810,10 @@ class BelongsToMany extends Relationship
     /**
      * Get a new pivot statement for a given "other" ID.
      *
-     * @param  mixed  $id
+     * @param mixed $id
+     *
+     * @throws \InvalidArgumentException
+     *
      * @return \Illuminate\Database\Query\Builder
      */
     public function newPivotStatementForId($id)
@@ -813,24 +830,26 @@ class BelongsToMany extends Relationship
     /**
      * Create a new pivot model instance.
      *
-     * @param  array  $attributes
-     * @param  bool   $exists
+     * @param array $attributes
+     * @param bool  $exists
+     *
      * @return \Analogue\ORM\Relationships\Pivot
      */
-    public function newPivot(array $attributes = array(), $exists = false)
+    public function newPivot(array $attributes = [], $exists = false)
     {
         $pivot = new Pivot($this->parent, $this->parentMap, $attributes, $this->table, $exists);
-        
+
         return $pivot->setPivotKeys($this->foreignKey, $this->otherKey);
     }
 
     /**
      * Create a new existing pivot model instance.
      *
-     * @param  array  $attributes
+     * @param array $attributes
+     *
      * @return \Analogue\ORM\Relationships\Pivot
      */
-    public function newExistingPivot(array $attributes = array())
+    public function newExistingPivot(array $attributes = [])
     {
         return $this->newPivot($attributes, true);
     }
@@ -838,7 +857,8 @@ class BelongsToMany extends Relationship
     /**
      * Set the columns on the pivot table to retrieve.
      *
-     * @param  array  $columns
+     * @param array $columns
+     *
      * @return $this
      */
     public function withPivot($columns)
@@ -853,8 +873,9 @@ class BelongsToMany extends Relationship
     /**
      * Specify that the pivot table has creation and update timestamps.
      *
-     * @param  mixed  $createdAt
-     * @param  mixed  $updatedAt
+     * @param mixed $createdAt
+     * @param mixed $updatedAt
+     *
      * @return \Analogue\ORM\Relationships\BelongsToMany
      */
     public function withTimestamps($createdAt = null, $updatedAt = null)
@@ -919,6 +940,6 @@ class BelongsToMany extends Relationship
      */
     public function getRelationName()
     {
-        return $this->relationName;
+        return $this->relation;
     }
 }
