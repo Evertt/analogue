@@ -1,10 +1,14 @@
-<?php namespace Analogue\ORM;
+<?php
 
+namespace Analogue\ORM;
+
+/**
+ * @deprecated as 5.5 uses reflection based mapping
+ */
 interface Mappable
 {
-
     /**
-     * Set the object attribute raw values (hydration)
+     * Set the object attribute raw values (hydration).
      *
      * @param array $attributes
      */
@@ -16,18 +20,4 @@ interface Mappable
      * @return array
      */
     public function getEntityAttributes();
-
-    /**
-     * Set the raw entity attributes
-     * @param string $key
-     * @param string $value
-     */
-    //public function setEntityAttribute($key, $value);
-
-    /**
-     * Return the entity's attribute
-     * @param  string $key
-     * @return mixed
-     */
-    //public function getEntityAttribute($key);
 }

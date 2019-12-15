@@ -1,12 +1,13 @@
-<?php namespace Analogue\ORM\Relationships;
+<?php
 
-use Analogue\ORM\EntityCollection;
+namespace Analogue\ORM\Relationships;
 
 class HasOne extends HasOneOrMany
 {
-
     /**
      * Get the results of the relationship.
+     *
+     * @param $relation
      *
      * @return mixed
      */
@@ -29,33 +30,16 @@ class HasOne extends HasOneOrMany
         return $this->query->first();
     }
 
-
-    /**
-     * Initialize the relation on a set of entities.
-     *
-     * @param  array   $models
-     * @param  string  $relation
-     * @return array
-     */
-    public function initRelation(array $entities, $relation)
-    {
-        foreach ($entities as $entity) {
-            $entity->setEntityAttribute($relation, null);
-        }
-
-        return $entities;
-    }
-
     /**
      * Match the eagerly loaded results to their parents.
      *
-     * @param  array   $models
-     * @param  Analogue\ORM\EntityCollection  $results
-     * @param  string  $relation
+     * @param array  $results
+     * @param string $relation
+     *
      * @return array
      */
-    public function match(array $entities, EntityCollection $results, $relation)
+    public function match(array $results, $relation)
     {
-        return $this->matchOne($entities, $results, $relation);
+        return $this->matchOne($results, $relation);
     }
 }

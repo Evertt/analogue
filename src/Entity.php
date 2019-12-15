@@ -1,26 +1,23 @@
-<?php namespace Analogue\ORM;
+<?php
 
-use ArrayAccess;
-use JsonSerializable;
-use Illuminate\Contracts\Support\Jsonable;
-use Illuminate\Contracts\Support\Arrayable;
-use Analogue\ORM\System\Proxies\EntityProxy;
+namespace Analogue\ORM;
 
-class Entity extends ValueObject implements Mappable, ArrayAccess, Jsonable, JsonSerializable, Arrayable
+class Entity extends ValueObject
 {
-
     /**
      * Entities Hidden Attributes, that will be discarded when converting
      * the entity to Array/Json
-     * (can include any embedded object's attribute)
+     * (can include any embedded object's attribute).
      *
      * @var array
      */
     protected $hidden = [];
 
     /**
-     * Return the entity's attribute
-     * @param  string $key
+     * Return the entity's attribute.
+     *
+     * @param string $key
+     *
      * @return mixed
      */
     public function __get($key)
@@ -36,20 +33,19 @@ class Entity extends ValueObject implements Mappable, ArrayAccess, Jsonable, Jso
 
             return $this->$method($attribute);
         }
-        if (! array_key_exists($key, $this->attributes)) {
-            return null;
+        if (!array_key_exists($key, $this->attributes)) {
+            return;
         }
-        if ($this->attributes[$key] instanceof EntityProxy) {
-            $this->attributes[$key] = $this->attributes[$key]->load();
-        }
+
         return $this->attributes[$key];
     }
 
     /**
      * Dynamically set attributes on the entity.
      *
-     * @param  string  $key
-     * @param  mixed   $value
+     * @param string $key
+     * @param mixed  $value
+     *
      * @return void
      */
     public function __set($key, $value)
@@ -66,32 +62,41 @@ class Entity extends ValueObject implements Mappable, ArrayAccess, Jsonable, Jso
     /**
      * Is a getter method defined ?
      *
-     * @param  string  $key
-     * @return boolean
+     * @param string $key
+     *
+     * @return bool
      */
     protected function hasGetMutator($key)
     {
-        return method_exists($this, 'get'.$this->getMutatorMethod($key)) ? true : false;
+        return method_exists($this, 'get'.$this->getMutatorMethod($key));
     }
 
     /**
      * Is a setter method defined ?
      *
-     * @param  string  $key
-     * @return boolean
+     * @param string $key
+     *
+     * @return bool
      */
     protected function hasSetMutator($key)
     {
-        return method_exists($this, 'set'.$this->getMutatorMethod($key)) ? true : false;
-    }
-
-    protected function getMutatorMethod($key)
-    {
-        return ucfirst($key).'Attribute';
+        return method_exists($this, 'set'.$this->getMutatorMethod($key));
     }
 
     /**
-     * Convert every attributes to value / arrays
+     * @param $key
+     *
+     * @return string
+     */
+    protected function getMutatorMethod($key)
+    {
+        $key = ucwords(str_replace(['-', '_'], ' ', $key));
+
+        return str_replace(' ', '', $key).'Attribute';
+    }
+
+    /**
+     * Convert every attributes to value / arrays.
      *
      * @return array
      */
@@ -100,7 +105,7 @@ class Entity extends ValueObject implements Mappable, ArrayAccess, Jsonable, Jso
         // First, call the trait method before filtering
         // with Entity specific methods
         $attributes = $this->attributesToArray($this->attributes);
-        
+
         foreach ($this->attributes as $key => $attribute) {
             if (in_array($key, $this->hidden)) {
                 unset($attributes[$key]);
@@ -111,6 +116,21 @@ class Entity extends ValueObject implements Mappable, ArrayAccess, Jsonable, Jso
                 $attributes[$key] = $this->$method($attribute);
             }
         }
+
         return $attributes;
+    }
+
+    /**
+     * Fill an entity with key-value pairs.
+     *
+     * @param array $attributes
+     *
+     * @return void
+     */
+    public function fill(array $attributes)
+    {
+        foreach ($attributes as $key => $attribute) {
+            $this->{$key} = $attribute;
+        }
     }
 }

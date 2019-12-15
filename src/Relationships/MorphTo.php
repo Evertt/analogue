@@ -1,13 +1,13 @@
-<?php namespace Analogue\ORM\Relationships;
+<?php
 
-use Analogue\ORM\System\Mapper;
-use Analogue\ORM\System\Manager;
+namespace Analogue\ORM\Relationships;
+
 use Analogue\ORM\EntityCollection;
+use Analogue\ORM\System\Mapper;
 use Illuminate\Support\Collection as BaseCollection;
 
 class MorphTo extends BelongsTo
 {
-
     /**
      * The type of the polymorphic relation.
      *
@@ -18,18 +18,18 @@ class MorphTo extends BelongsTo
     /**
      * The entities whose relations are being eager loaded.
      *
-     * @var \Analogue\ORM\EntityCollection
+     * @var EntityCollection
      */
     protected $entities;
 
     /**
-     * All of the models keyed by ID.
+     * All of the result sets keyed by ID.
      *
      * @var array
      */
-    protected $dictionary = array();
+    protected $dictionary = [];
 
-    /*
+    /**
      * Indicates if soft-deleted model instances should be fetched.
      *
      * @var bool
@@ -37,22 +37,14 @@ class MorphTo extends BelongsTo
     protected $withTrashed = false;
 
     /**
-     * Indicate if the parent entity hold the key for the relation.
-     *
-     * @var boolean
-     */
-    protected static $ownForeignKey = true;
-
-    /**
      * Create a new belongs to relationship instance.
      *
-     * @param  \Analogue\ORM\System\Query  $query
-     * @param  Mappable  $parent
-     * @param  string  $foreignKey
-     * @param  string  $otherKey
-     * @param  string  $type
-     * @param  string  $relation
-     * @return void
+     * @param Mapper                 $mapper
+     * @param \Analogue\ORM\Mappable $parent
+     * @param string                 $foreignKey
+     * @param string                 $otherKey
+     * @param string                 $type
+     * @param string                 $relation
      */
     public function __construct(Mapper $mapper, $parent, $foreignKey, $otherKey, $type, $relation)
     {
@@ -64,25 +56,27 @@ class MorphTo extends BelongsTo
     /**
      * Set the constraints for an eager load of the relation.
      *
-     * @param  array  $entities
+     * @param array $results
+     *
      * @return void
      */
-    public function addEagerConstraints(array $entities)
+    public function addEagerConstraints(array $results)
     {
-        $this->buildDictionary($this->entities = EntityCollection::make($entities));
+        $this->buildDictionary($results);
     }
 
     /**
-     * Build a dictionary with the entities
+     * Build a dictionary with the entities.
      *
-     * @param  \Analogue\ORM\EntityCollection  $entities
+     * @param array $results
+     *
      * @return void
      */
-    protected function buildDictionary(EntityCollection $entities)
+    protected function buildDictionary($results)
     {
-        foreach ($entities as $entity) {
-            if ($entity->getEntityAttribute($this->morphType)) {
-                $this->dictionary[$entity->getEntityAttribute($this->morphType)][$entity->getEntityAttribute($this->foreignKey)][] = $entity;
+        foreach ($results as $result) {
+            if ($result[$this->morphType]) {
+                $this->dictionary[$result[$this->morphType]][$result[$this->foreignKey]][] = $result;
             }
         }
     }
@@ -90,99 +84,94 @@ class MorphTo extends BelongsTo
     /**
      * Match the eagerly loaded results to their parents.
      *
-     * @param  array   $entities
-     * @param  \Analogue\ORM\EntityCollection  $results
-     * @param  string  $relation
+     * @param array  $results
+     * @param string $relation
+     *
      * @return array
      */
-    public function match(array $entities, EntityCollection $results, $relation)
-    {
-        return $entities;
-    }
-
-    /*
-     * Get the results of the relationship.
-     *
-     * @return mixed
-     */
-    public function getEager()
+    public function match(array $results, $relation)
     {
         foreach (array_keys($this->dictionary) as $type) {
-            $this->matchToMorphParents($type, $this->getResultsByType($type));
+            $results = $this->matchToMorphParents($type, $this->getResultsByType($type), $results);
         }
 
-        return $this->entities;
+        return $results;
     }
 
     /**
      * Match the results for a given type to their parents.
      *
-     * @param  string  $type
-     * @param  \Analogue\ORM\EntityCollection  $results
-     * @return void
+     * @param string           $type
+     * @param EntityCollection $results
+     * @param array            $parents
+     *
+     * @return array
      */
-    protected function matchToMorphParents($type, EntityCollection $results)
+    protected function matchToMorphParents($type, EntityCollection $results, array $parents)
     {
+        $mapper = $this->relatedMapper->getManager()->mapper($type);
+        $keyName = $mapper->getEntityMap()->getKeyName();
+
+        $keys = array_map(function ($parent) use ($keyName) {
+            return $parent[$keyName];
+        }, $parents);
+
+        $parents = array_combine($keys, $parents);
+
         foreach ($results as $result) {
-            if (isset($this->dictionary[$type][$result->getEntityKey()])) {
-                foreach ($this->dictionary[$type][$result->getEntityKey()] as $entity) {
-                    $entity->setEntityAttribute($this->relation, $result);
+            $key = $result[$keyName];
+
+            if (isset($this->dictionary[$type][$key])) {
+                foreach ($this->dictionary[$type][$key] as $parent) {
+                    $parents[$parent[$keyName]][$this->relation] = $result;
                 }
             }
         }
+
+        return array_values($parents);
     }
 
     /**
      * Get all of the relation results for a type.
      *
-     * @param  string  $type
-     * @return \Analogue\ORM\EntityCollection
+     * @param string $type
+     *
+     * @throws \Analogue\ORM\Exceptions\MappingException
+     *
+     * @return \Illuminate\Support\Collection
      */
     protected function getResultsByType($type)
     {
         $mapper = $this->relatedMapper->getManager()->mapper($type);
 
-        $map = $mapper->getEntityMap();
-
-        $key = $map->getKeyName();
+        $key = $mapper->getEntityMap()->getKeyName();
 
         $query = $mapper->getQuery();
 
-        //$query = $this->useWithTrashed($query);
-
-        return $query->whereIn($key, $this->gatherKeysByType($type)->all())->get();
+        return $query->whereIn($key, array_keys($this->dictionary[$type]))->get();
     }
 
     /**
      * Gather all of the foreign keys for a given type.
      *
-     * @param  string  $type
-     * @return array
+     * @param string $type
+     *
+     * @return BaseCollection
      */
     protected function gatherKeysByType($type)
     {
         $foreign = $this->foreignKey;
 
         return BaseCollection::make($this->dictionary[$type])->map(function ($entities) use ($foreign) {
-            return head($entities)->{$foreign};
-
+            return head($entities)[$foreign];
         })->unique();
     }
 
     /**
-     * Get the foreign key of the relationship.
-     *
-     * @return string
-     */
-    /*public function getForeignKey()
-    {
-        return $this->foreignKey;
-    }*/
-
-    /**
      * Associate the model instance to the given parent.
      *
-     * @param  mixed $entity
+     * @param mixed $entity
+     *
      * @return void
      */
     public function associate($entity)
@@ -193,14 +182,14 @@ class MorphTo extends BelongsTo
         //$this->parent->setEntityAttribute($this->foreignKey, $entity->getEntityAttribute($this->otherKey));
         //
         // Instead, we'll just add the object to the Entity's attribute
-        
-        $this->parent->setEntityAttribute($this->relation, $entity);
+
+        $this->parent->setEntityAttribute($this->relation, $entity->getEntityObject());
     }
 
     /**
-     * Get the foreign key value pair for a related object
+     * Get the foreign key value pair for a related object.
      *
-     * @var mixed $related
+     * @param mixed $related
      *
      * @return array
      */
@@ -213,7 +202,10 @@ class MorphTo extends BelongsTo
 
             $relatedKey = $this->relatedMap->getKeyName();
 
-            return [$foreignKey => $wrapper->getEntityAttribute($relatedKey)];
+            return [
+                $foreignKey      => $wrapper->getEntityAttribute($relatedKey),
+                $this->morphType => $wrapper->getMap()->getMorphClass(),
+            ];
         } else {
             return [$foreignKey => null];
         }

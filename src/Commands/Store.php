@@ -2,17 +2,7 @@
 
 namespace Analogue\ORM\Commands;
 
-use Analogue\ORM\Mappable;
-use Analogue\ORM\System\Mapper;
-use Analogue\ORM\System\Manager;
-use Analogue\ORM\EntityCollection;
-use Analogue\ORM\Drivers\QueryAdapter;
 use Analogue\ORM\System\Aggregate;
-use Analogue\ORM\System\InternallyMappable;
-use Analogue\ORM\System\Proxies\EntityProxy;
-use Analogue\ORM\Exceptions\MappingException;
-use Analogue\ORM\System\Proxies\ProxyInterface;
-use Analogue\ORM\System\Proxies\CollectionProxy;
 
 /**
  * Persist entities & relationships to the
@@ -20,62 +10,69 @@ use Analogue\ORM\System\Proxies\CollectionProxy;
  */
 class Store extends Command
 {
-
     /**
-     * Persist the entity in the database
+     * Persist the entity in the database.
      *
-     * @return void
+     * @throws \InvalidArgumentException
+     *
+     * @return false|mixed
      */
     public function execute()
     {
         $entity = $this->aggregate->getEntityObject();
-
+        $wrappedEntity = $this->aggregate->getWrappedEntity();
         $mapper = $this->aggregate->getMapper();
 
-        if ($mapper->fireEvent('storing', $entity) === false) {
+        if ($mapper->fireEvent('storing', $wrappedEntity) === false) {
             return false;
         }
 
         $this->preStoreProcess();
 
-        /**
+        /*
          * We will test the entity for existence
          * and run a creation if it doesn't exists
          */
-        if (! $this->aggregate->exists()) {
-            if ($mapper->fireEvent('creating', $entity) === false) {
+        if (!$this->aggregate->exists()) {
+            if ($mapper->fireEvent('creating', $wrappedEntity) === false) {
                 return false;
             }
-            
+
             $this->insert();
 
-            $mapper->fireEvent('created', $entity, false);
-        }
-        
-        /**
-         * We'll only run an update if the entity
-         * is actually dirty
-         */
-        if ($this->aggregate->isDirty()) {
-            if ($mapper->fireEvent('updating', $entity) === false) {
+            $mapper->fireEvent('created', $wrappedEntity, false);
+        } elseif ($this->aggregate->isDirty()) {
+            if ($mapper->fireEvent('updating', $wrappedEntity) === false) {
                 return false;
             }
             $this->update();
 
-            $mapper->fireEvent('updated', $entity, false);
+            $mapper->fireEvent('updated', $wrappedEntity, false);
         }
 
         $this->postStoreProcess();
 
-        $mapper->fireEvent('stored', $entity, false);
+        $mapper->fireEvent('stored', $wrappedEntity, false);
+
+        // Once the object is stored, add it to the Instance cache
+        $key = $this->aggregate->getEntityKeyValue();
+
+        if (!$mapper->getInstanceCache()->has($key)) {
+            $mapper->getInstanceCache()->add($entity, $key);
+        }
+
+        $this->syncForeignKeyAttributes();
+
+        $wrappedEntity->unwrap();
 
         return $entity;
-        ;
     }
 
     /**
      * Run all operations that have to occur before actually
-     * storing the entity
+     * storing the entity.
+     *
+     * @throws \InvalidArgumentException
      *
      * @return void
      */
@@ -83,42 +80,51 @@ class Store extends Command
     {
         // Create any related object that doesn't exist in the database.
         $localRelationships = $this->aggregate->getEntityMap()->getLocalRelationships();
-        
+
         $this->createRelatedEntities($localRelationships);
+
+        // Now we can sync the related collections
+        $this->aggregate->syncRelationships($localRelationships);
     }
 
     /**
-     * Check for existence and create non-existing related entities
+     * Check for existence and create non-existing related entities.
      *
      * @param  array
+     *
+     * @throws \InvalidArgumentException
+     *
      * @return void
      */
     protected function createRelatedEntities($relations)
     {
         $entitiesToCreate = $this->aggregate->getNonExistingRelated($relations);
-                
+
         foreach ($entitiesToCreate as $aggregate) {
             $this->createStoreCommand($aggregate)->execute();
         }
     }
 
     /**
-     * Create a new store command
+     * Create a new store command.
      *
-     * @param  Aggregate $aggregate
-     * @return void
+     * @param Aggregate $aggregate
+     *
+     * @return Store
      */
-    protected function createStoreCommand(Aggregate $aggregate)
+    protected function createStoreCommand(Aggregate $aggregate): self
     {
         // We gotta retrieve the corresponding query adapter to use.
         $mapper = $aggregate->getMapper();
 
-        return new Store($aggregate, $mapper->newQueryBuilder());
+        return new self($aggregate, $mapper->newQueryBuilder());
     }
 
     /**
      * Run all operations that have to occur after the entity
      * is stored.
+     *
+     * @throws \InvalidArgumentException
      *
      * @return void
      */
@@ -128,6 +134,7 @@ class Store extends Command
 
         // Create any related object that doesn't exist in the database.
         $foreignRelationships = $aggregate->getEntityMap()->getForeignRelationships();
+
         $this->createRelatedEntities($foreignRelationships);
 
         // Update any pivot tables that has been modified.
@@ -141,70 +148,24 @@ class Store extends Command
             $this->createStoreCommand($related)->execute();
         }
 
+        // Now we can sync the related collections
+        //
+        // TODO (note) : not sure this check is needed, as we can assume
+        // the aggregate exists in the Post Store Process
         if ($this->aggregate->exists()) {
-            $this->aggregate->syncRelationships();
+            $this->aggregate->syncRelationships($foreignRelationships);
         }
-        // This should be move to the wrapper class
+
+        // TODO be move it to the wrapper class
         // so it's the same code for the entity builder
         $aggregate->setProxies();
-        
+
         // Update Entity Cache
         $aggregate->getMapper()->getEntityCache()->refresh($aggregate);
     }
 
     /**
-     * Update Related Entities which attributes have
-     * been modified.
-     *
-     * @return void
-     */
-    protected function updateDirtyRelated()
-    {
-        $relations = $this->entityMap->getRelationships();
-        $attributes = $this->getAttributes();
-
-        foreach ($relations as $relation) {
-            if (! array_key_exists($relation, $attributes)) {
-                continue;
-            }
-
-            $value = $attributes[$relation];
-
-            if ($value == null) {
-                continue;
-            }
-
-            if ($value instanceof EntityProxy) {
-                continue;
-            }
-
-            if ($value instanceof CollectionProxy && $value->isLoaded()) {
-                $value = $value->getUnderlyingCollection();
-            }
-            if ($value instanceof CollectionProxy && ! $value->isLoaded()) {
-                foreach ($value->getAddedItems() as $entity) {
-                    $this->updateEntityIfDirty($entity);
-                }
-                continue;
-            }
-
-            if ($value instanceof EntityCollection) {
-                foreach ($value as $entity) {
-                    if (! $this->createEntityIfNotExists($entity)) {
-                        $this->updateEntityIfDirty($entity);
-                    }
-                }
-                continue;
-            }
-            if ($value instanceof Mappable) {
-                $this->updateEntityIfDirty($value);
-                continue;
-            }
-        }
-    }
-
-    /**
-     * Execute an insert statement on the database
+     * Execute an insert statement on the database.
      *
      * @return void
      */
@@ -213,38 +174,62 @@ class Store extends Command
         $aggregate = $this->aggregate;
 
         $attributes = $aggregate->getRawAttributes();
-        
+
         $keyName = $aggregate->getEntityMap()->getKeyName();
 
         // Check if the primary key is defined in the attributes
         if (array_key_exists($keyName, $attributes) && $attributes[$keyName] != null) {
             $this->query->insert($attributes);
         } else {
-            $sequence = $aggregate->getEntityMap()->getSequence();
+            // Prevent inserting with a null ID
+            if (array_key_exists($keyName, $attributes)) {
+                unset($attributes[$keyName]);
+            }
 
-            $id = $this->query->insertGetId($attributes, $sequence);
+            if (isset($attributes['attributes'])) {
+                unset($attributes['attributes']);
+            }
+
+            $id = $this->query->insertGetId($attributes, $keyName);
 
             $aggregate->setEntityAttribute($keyName, $id);
         }
     }
 
     /**
-     * Run an update statement on the entity
+     * Update attributes on actual entity.
+     *
+     * @param array $attributes
+     *
+     * @return void
+     */
+    protected function syncForeignKeyAttributes()
+    {
+        $attributes = $this->aggregate->getForeignKeyAttributes();
+
+        foreach ($attributes as $key => $value) {
+            $this->aggregate->setEntityAttribute($key, $value);
+        }
+    }
+
+    /**
+     * Run an update statement on the entity.
+     *
+     * @throws \InvalidArgumentException
      *
      * @return void
      */
     protected function update()
     {
-        $query = $this->query;
+        $key = $this->aggregate->getEntityKeyName();
+        $value = $this->aggregate->getEntityKeyValue();
 
-        $keyName = $this->aggregate->getEntityKey();
-
-        $query = $query->where($keyName, '=', $this->aggregate->getEntityId());
+        $this->query->where($key, $value);
 
         $dirtyAttributes = $this->aggregate->getDirtyRawAttributes();
-                
+
         if (count($dirtyAttributes) > 0) {
-            $query->update($dirtyAttributes);
+            $this->query->update($dirtyAttributes);
         }
     }
 }

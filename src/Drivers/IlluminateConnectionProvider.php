@@ -1,24 +1,37 @@
-<?php namespace Analogue\ORM\Drivers;
+<?php
 
+namespace Analogue\ORM\Drivers;
+
+use Illuminate\Database\Connection;
 use Illuminate\Database\DatabaseManager;
 
 class IlluminateConnectionProvider
 {
-
+    /**
+     * Database manager.
+     *
+     * @var DatabaseManager
+     */
     protected $db;
 
+    /**
+     * IlluminateConnectionProvider constructor.
+     *
+     * @param DatabaseManager $db
+     */
     public function __construct(DatabaseManager $db)
     {
         $this->db = $db;
     }
 
     /**
-     * Get a Database connection object
+     * Get a Database connection object.
      *
-     * @param  $name
+     * @param string $name
+     *
      * @return \Illuminate\Database\Connection
      */
-    public function connection($name = null)
+    public function connection(string $name = null): Connection
     {
         return $this->db->connection($name);
     }

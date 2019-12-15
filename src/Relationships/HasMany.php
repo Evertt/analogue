@@ -1,12 +1,13 @@
-<?php namespace Analogue\ORM\Relationships;
+<?php
 
-use Analogue\ORM\EntityCollection;
+namespace Analogue\ORM\Relationships;
 
 class HasMany extends HasOneOrMany
 {
-
     /**
-     * Get the results of the relationship.
+     * Lazy-Load the results of the relationship.
+     *
+     * @param  $relation
      *
      * @return mixed
      */
@@ -20,33 +21,15 @@ class HasMany extends HasOneOrMany
     }
 
     /**
-     * Initialize the relation on a set of entities.
-     *
-     * @param  array   $entities
-     * @param  string  $relation
-     * @return array
-     */
-    public function initRelation(array $entities, $relation)
-    {
-        foreach ($entities as $entity) {
-            $entityWrapper = $this->factory->make($entity);
-
-            $entityWrapper->setEntityAttribute($relation, $this->relatedMap->newCollection());
-        }
-
-        return $entities;
-    }
-
-    /**
      * Match the eagerly loaded results to their parents.
      *
-     * @param  array   $entities
-     * @param  \Analogue\ORM\EntityCollection  $results
-     * @param  string  $relation
+     * @param array  $results
+     * @param string $relation
+     *
      * @return array
      */
-    public function match(array $entities, EntityCollection $results, $relation)
+    public function match(array $results, $relation)
     {
-        return $this->matchMany($entities, $results, $relation);
+        return $this->matchMany($results, $relation);
     }
 }
